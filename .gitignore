@@ -1,0 +1,5 @@
+﻿node_modules/
+*.aab
+*.apk
+signing.keystore
+.DS_Store

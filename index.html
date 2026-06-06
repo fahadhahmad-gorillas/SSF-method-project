@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a23">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gorillas">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>Gorillas — Banana Battle</title>
+<style>
+  :root {
+    --bg: #07071a;
+    --panel: rgba(20,20,46,0.92);
+    --accent: #ffd23f;
+    --text: #e8e8ff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Courier New", Courier, monospace;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #app {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  #stage-wrap {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  canvas {
+    image-rendering: auto;
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: none;
+  }
+  /* ---------- HUD ---------- */
+  #hud {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    background: var(--panel);
+    padding: 8px 14px;
+    border-top: 2px solid #2a2a5a;
+    backdrop-filter: blur(4px);
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
+  }
+  .field { display: flex; flex-direction: column; gap: 2px; font-size: 11px; }
+  .field label { color: #9a9ad0; text-transform: uppercase; letter-spacing: 1px; }
+  .field input {
+    width: 84px; background: #000; border: 1px solid #4a4a8a; color: var(--accent);
+    font-family: inherit; font-size: 16px; padding: 5px 6px; border-radius: 4px; text-align: center;
+  }
+  .field input:focus { outline: none; border-color: var(--accent); }
+  button {
+    background: var(--accent); color: #1a1a00; border: none; font-family: inherit;
+    font-weight: bold; font-size: 15px; padding: 10px 18px; border-radius: 6px;
+    cursor: pointer; letter-spacing: 1px;
+  }
+  button:active { transform: translateY(1px); }
+  button:hover { background: #ffe066; }
+  button:disabled { background: #444; color: #888; cursor: not-allowed; }
+  button.secondary { background: #33336a; color: var(--text); }
+  button.secondary:hover { background: #44448a; }
+  #turn-banner { font-size: 13px; font-weight: bold; min-width: 180px; text-align: center; }
+  .p1 { color: #ff7b7b; } .p2 { color: #7bb6ff; }
+  #scoreline { font-size: 13px; color: #c8c8f0; white-space: nowrap; }
+  #scoreline b { color: var(--accent); font-size: 16px; }
+  /* ---------- top bar over canvas ---------- */
+  #topbar {
+    position: absolute; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 12px; padding-top: calc(8px + env(safe-area-inset-top));
+    font-size: 13px; pointer-events: none; z-index: 5;
+    text-shadow: 1px 1px 2px #000;
+  }
+  #brand { color: var(--accent); font-weight: bold; letter-spacing: 2px; }
+  /* ---------- overlay ---------- */
+  #setup {
+    position: absolute; inset: 0; background: rgba(7,7,26,0.94);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; z-index: 10; text-align: center; padding: 24px;
+  }
+  #setup h2 { color: var(--accent); font-size: 30px; letter-spacing: 3px; text-shadow: 2px 2px 0 #b8860b; }
+  #setup p { color: #b0b0e0; font-size: 13px; max-width: 440px; line-height: 1.7; }
+  .mode-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  .hidden { display: none !important; }
+  #hint { position: absolute; bottom: 6px; left: 0; right: 0; text-align: center;
+          font-size: 10px; color: #66668a; pointer-events: none; z-index: 5; }
+  @media (max-width: 560px) {
+    #scoreline { order: -1; width: 100%; text-align: center; }
+    .field input { width: 70px; }
+    #hint { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage-wrap">
+    <canvas id="game"></canvas>
+    <div id="topbar">
+      <span id="brand">🦍 GORILLAS</span>
+      <span id="scoreline">P1 <b id="s1">0</b> &nbsp;–&nbsp; <b id="s2">0</b> P2</span>
+    </div>
+    <div id="hint">Drag from your gorilla to aim &amp; throw · or type angle/power · ↑↓ angle ←→ power · Enter fires</div>
+    <div id="setup">
+      <h2>GORILLAS</h2>
+      <p>Two gorillas duel atop a city skyline. <b>Drag back from your gorilla</b> to aim
+         (or type an <b>angle</b> and <b>power</b>), then launch an explosive banana.
+         Watch the <b>wind</b> arrow. First to 3 wins!</p>
+      <div class="mode-row">
+        <button id="mode-2p">2 PLAYERS</button>
+        <button id="mode-ai" class="secondary">VS COMPUTER</button>
+      </div>
+    </div>
+  </div>
+  <div id="hud">
+    <div id="turn-banner">—</div>
+    <div class="field">
+      <label for="angle">Angle°</label>
+      <input id="angle" type="number" min="0" max="90" step="1" value="45" inputmode="numeric">
+    </div>
+    <div class="field">
+      <label for="power">Power</label>
+      <input id="power" type="number" min="1" max="200" step="1" value="75" inputmode="numeric">
+    </div>
+    <button id="fire">FIRE ▶</button>
+    <button id="newgame" class="secondary">MENU</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---- Virtual resolution (game logic space). Canvas backing store scales to device. ----
+  const W = 640, H = 400;
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  let scaleX = 1, scaleY = 1, dpr = 1;
+
+  function resize() {
+    const wrap = document.getElementById("stage-wrap");
+    const cw = wrap.clientWidth, ch = wrap.clientHeight;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // letterbox to keep 640:400 aspect
+    const targetAR = W / H;
+    let dispW = cw, dispH = cw / targetAR;
+    if (dispH > ch) { dispH = ch; dispW = ch * targetAR; }
+    canvas.style.width = dispW + "px";
+    canvas.style.height = dispH + "px";
+    canvas.width = Math.round(dispW * dpr);
+    canvas.height = Math.round(dispH * dpr);
+    scaleX = canvas.width / W;
+    scaleY = canvas.height / H;
+  }
+  window.addEventListener("resize", resize);
+
+  const GRAVITY = 9.8;
+  const WIN_SCORE = 3;
+
+  const el = {
+    angle: document.getElementById("angle"),
+    power: document.getElementById("power"),
+    fire: document.getElementById("fire"),
+    banner: document.getElementById("turn-banner"),
+    s1: document.getElementById("s1"),
+    s2: document.getElementById("s2"),
+    setup: document.getElementById("setup"),
+    mode2p: document.getElementById("mode-2p"),
+    modeAI: document.getElementById("mode-ai"),
+    newgame: document.getElementById("newgame"),
+  };
+
+  // ---- State ----
+  let buildings = [], farBuildings = [], stars = [], clouds = [];
+  let gorillas = [];
+  let sun = { x: W/2, y: 40, hit: false, hitTimer: 0 };
+  let wind = 0;
+  let currentPlayer = 0;
+  let scores = [0, 0];
+  let vsAI = false;
+  let banana = null;
+  let explosions = [];
+  let particles = [];
+  let state = "setup";
+  let lastTrajectory = [];
+  let craters = [];
+  let shake = 0;
+  let aim = null; // {fromX,fromY,curX,curY} drag-aim preview
+
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const randInt = (a, b) => Math.floor(rand(a, b + 1));
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const dist2 = (x1,y1,x2,y2)=>{const dx=x1-x2,dy=y1-y2;return dx*dx+dy*dy;};
+
+  // ---- World generation ----
+  function buildCity() {
+    buildings = []; craters = []; farBuildings = []; stars = []; clouds = [];
+
+    // stars
+    for (let i = 0; i < 70; i++) {
+      stars.push({ x: rand(0, W), y: rand(0, H * 0.6), r: rand(0.4, 1.4), tw: rand(0, Math.PI*2) });
+    }
+    // distant parallax skyline silhouette
+    let fx = -10;
+    while (fx < W + 10) {
+      const fw = randInt(24, 60), fh = randInt(40, 150);
+      farBuildings.push({ x: fx, y: H - fh, w: fw, h: fh });
+      fx += fw - randInt(0, 8);
+    }
+    // drifting clouds
+    for (let i = 0; i < 3; i++) {
+      clouds.push({ x: rand(0, W), y: rand(40, 130), s: rand(28, 54), v: rand(2, 6) * (Math.random()<.5?-1:1) });
+    }
+
+    // main buildings
+    const count = randInt(8, 11);
+    const slotW = W / count;
+    const palette = [
+      ["#8f4a52","#6e353c"], ["#48638f","#33485f"], ["#4f8f63","#37624a"],
+      ["#8f7e48","#62542f"], ["#6a4f8f","#4a3762"], ["#488f8f","#2f6262"],
+    ];
+    let x = 0;
+    for (let i = 0; i < count; i++) {
+      const w = slotW;
+      const h = randInt(70, 270);
+      const pal = palette[randInt(0, palette.length - 1)];
+      buildings.push({
+        x, y: H - h, w, h, top: pal[0], bot: pal[1], seed: randInt(1, 99999),
+        roof: Math.random() < 0.5 ? (Math.random()<0.5?"antenna":"tank") : "none",
+      });
+      x += w;
+    }
+  }
+
+  function placeGorillas() {
+    const leftIdx = randInt(1, 2);
+    const rightIdx = buildings.length - randInt(2, 3);
+    gorillas = [];
+    [leftIdx, rightIdx].forEach((bi, p) => {
+      const b = buildings[bi];
+      const gw = 30, gh = 30;
+      gorillas.push({
+        x: b.x + b.w / 2 - gw / 2, y: b.y - gh, w: gw, h: gh,
+        player: p, armUp: -1, idle: rand(0, Math.PI*2),
+      });
+    });
+  }
+
+  function newRound() {
+    buildCity(); placeGorillas();
+    wind = rand(-3.2, 3.2);
+    sun = { x: W / 2, y: 42, hit: false, hitTimer: 0 };
+    banana = null; explosions = []; particles = []; lastTrajectory = []; shake = 0; aim = null;
+    state = "aiming"; updateBanner();
+    el.fire.disabled = false;
+    if (vsAI && currentPlayer === 1) setTimeout(aiTurn, 750);
+  }
+
+  function newGame(ai) {
+    vsAI = ai; scores = [0, 0]; currentPlayer = 0;
+    el.s1.textContent = "0"; el.s2.textContent = "0";
+    el.setup.classList.add("hidden");
+    newRound();
+  }
+
+  function updateBanner() {
+    if (state === "gameover") return;
+    const name = currentPlayer === 0 ? "PLAYER 1" : (vsAI ? "COMPUTER" : "PLAYER 2");
+    const cls = currentPlayer === 0 ? "p1" : "p2";
+    const windTxt = Math.abs(wind) < 0.15 ? "calm" :
+      (wind > 0 ? "→ " : "← ") + Math.abs(wind).toFixed(1);
+    el.banner.innerHTML = `<span class="${cls}">${name}</span> &nbsp;·&nbsp; wind ${windTxt}`;
+    el.fire.disabled = (vsAI && currentPlayer === 1) || state !== "aiming";
+  }
+
+  // ---- Firing ----
+  function fire(angleDeg, power, player) {
+    if (state !== "aiming") return;
+    const g = gorillas[player];
+    const dir = player === 0 ? 1 : -1;
+    const rad = angleDeg * Math.PI / 180;
+    const speed = power * 0.55;
+    banana = {
+      x: g.x + g.w / 2, y: g.y - 6,
+      vx: Math.cos(rad) * speed * dir, vy: -Math.sin(rad) * speed,
+      r: 6, rot: 0, player, trail: [],
+    };
+    g.armUp = dir > 0 ? 1 : 0;
+    state = "flying"; el.fire.disabled = true; aim = null;
+    setTimeout(() => { if (gorillas[player]) gorillas[player].armUp = -1; }, 280);
+  }
+
+  function fireFromInputs() {
+    if (state !== "aiming") return;
+    let a = clamp(parseFloat(el.angle.value) || 0, 0, 90);
+    let p = clamp(parseFloat(el.power.value) || 0, 1, 200);
+    el.angle.value = a; el.power.value = p;
+    fire(a, p, currentPlayer);
+  }
+
+  // ---- AI ----
+  function aiTurn() {
+    if (state !== "aiming" || currentPlayer !== 1) return;
+    const me = gorillas[1], foe = gorillas[0];
+    if (!me || !foe) return;
+    const dx = (me.x + me.w/2) - (foe.x + foe.w/2);
+    const dist = Math.abs(dx);
+    const angle = rand(40, 65);
+    const rad = angle * Math.PI / 180;
+    const sin2 = Math.sin(2 * rad) || 0.5;
+    let v = Math.sqrt(Math.max(50, (dist * GRAVITY) / sin2));
+    v -= wind * 6;
+    let power = clamp(v / 0.55, 20, 180);
+    const errScale = Math.max(0.04, 0.22 - scores[1] * 0.06);
+    power *= 1 + rand(-errScale, errScale);
+    const aimAngle = clamp(angle + rand(-4, 4), 10, 85);
+    el.angle.value = Math.round(aimAngle); el.power.value = Math.round(power);
+    fire(aimAngle, power, 1);
+  }
+
+  // ---- Physics ----
+  function step(dt) {
+    // animate ambient
+    for (const c of clouds) { c.x += c.v * dt; if (c.x < -60) c.x = W + 60; if (c.x > W + 60) c.x = -60; }
+    for (const g of gorillas) if (g) g.idle += dt * 2;
+
+    if (state === "flying" && banana) {
+      banana.vx += wind * dt;
+      banana.vy += GRAVITY * dt * 6;
+      banana.x += banana.vx * dt * 6;
+      banana.y += banana.vy * dt * 6;
+      banana.rot += 0.45;
+      banana.trail.push({ x: banana.x, y: banana.y });
+      if (banana.trail.length > 70) banana.trail.shift();
+
+      if (!sun.hit && dist2(banana.x, banana.y, sun.x, sun.y) < 24*24) {
+        sun.hit = true; sun.hitTimer = 1.3;
+      }
+      if (banana.x < -20 || banana.x > W + 20 || banana.y > H + 20) { endShot(); return; }
+      for (let i = 0; i < gorillas.length; i++) {
+        const g = gorillas[i];
+        if (g && i !== banana.player &&
+            banana.x > g.x - 2 && banana.x < g.x + g.w + 2 &&
+            banana.y > g.y - 2 && banana.y < g.y + g.h + 2) {
+          explode(banana.x, banana.y, 40, true, i); return;
+        }
+      }
+      if (banana.y > 0 && hitsCity(banana.x, banana.y)) { explode(banana.x, banana.y, 24, false, -1); return; }
+    }
+
+    for (const ex of explosions) ex.t += dt * 3;
+    explosions = explosions.filter(ex => ex.t < 1);
+
+    for (const p of particles) {
+      p.vy += GRAVITY * dt * 8; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
+    }
+    particles = particles.filter(p => p.life > 0 && p.y < H + 10);
+
+    if (shake > 0) shake = Math.max(0, shake - dt * 30);
+    if (sun.hitTimer > 0) { sun.hitTimer -= dt; if (sun.hitTimer <= 0) sun.hit = false; }
+  }
+
+  function hitsCity(x, y) {
+    for (const b of buildings) {
+      if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+        for (const c of craters) if (dist2(x, y, c.x, c.y) < c.r * c.r) return false;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function spawnDebris(x, y, n, colors) {
+    for (let i = 0; i < n; i++) {
+      const a = rand(0, Math.PI * 2), sp = rand(30, 140);
+      particles.push({
+        x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - rand(20, 80),
+        size: rand(2, 5), life: rand(0.5, 1.2), color: colors[randInt(0, colors.length-1)],
+      });
+    }
+  }
+
+  function explode(x, y, r, hitGorilla, victim) {
+    explosions.push({ x, y, r, t: 0 });
+    craters.push({ x, y, r: r * 0.8 });
+    shake = hitGorilla ? 10 : 6;
+    spawnDebris(x, y, hitGorilla ? 34 : 18,
+      hitGorilla ? ["#ffd23f","#ff7b7b","#fff"] : ["#caa","#988","#ffd23f"]);
+    banana = null;
+    if (hitGorilla && victim >= 0) {
+      const winner = victim === 0 ? 1 : 0;
+      scores[winner]++; el.s1.textContent = scores[0]; el.s2.textContent = scores[1];
+      gorillas[victim] = null;
+      state = "exploding";
+      setTimeout(() => {
+        if (scores[winner] >= WIN_SCORE) { state = "gameover"; showGameOver(winner); }
+        else { currentPlayer = victim; newRound(); }
+      }, 1200);
+    } else { endShot(); }
+  }
+
+  function endShot() {
+    if (banana && banana.trail.length) lastTrajectory = banana.trail.slice();
+    banana = null;
+    currentPlayer = currentPlayer === 0 ? 1 : 0;
+    state = "aiming"; updateBanner();
+    if (vsAI && currentPlayer === 1) setTimeout(aiTurn, 750);
+  }
+
+  function showGameOver(winner) {
+    const name = winner === 0 ? "PLAYER 1" : (vsAI ? "COMPUTER" : "PLAYER 2");
+    el.setup.classList.remove("hidden");
+    el.setup.innerHTML =
+      `<h2>${name} WINS! 🏆</h2><p>Final score &nbsp; ${scores[0]} — ${scores[1]}</p>` +
+      `<div class="mode-row"><button id="again2p">PLAY AGAIN (2P)</button>` +
+      `<button id="againai" class="secondary">VS COMPUTER</button></div>`;
+    document.getElementById("again2p").onclick = () => newGame(false);
+    document.getElementById("againai").onclick = () => newGame(true);
+    updateBanner();
+  }
+
+  // ---------------- Rendering ----------------
+  function draw() {
+    ctx.save();
+    ctx.scale(scaleX, scaleY);
+    // screen shake
+    if (shake > 0) ctx.translate(rand(-shake, shake) * 0.4, rand(-shake, shake) * 0.4);
+
+    // sky gradient
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, "#05031f");
+    sky.addColorStop(0.45, "#241148");
+    sky.addColorStop(1, "#5a2350");
+    ctx.fillStyle = sky; ctx.fillRect(-20, -20, W + 40, H + 40);
+
+    // stars
+    for (const s of stars) {
+      const tw = 0.5 + 0.5 * Math.sin(s.tw + performance.now() / 600);
+      ctx.globalAlpha = 0.3 + tw * 0.7;
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(s.x, s.y, s.r, s.r);
+    }
+    ctx.globalAlpha = 1;
+
+    drawSun();
+    for (const c of clouds) drawCloud(c);
+
+    // distant skyline
+    ctx.fillStyle = "#1a1336";
+    for (const b of farBuildings) ctx.fillRect(b.x, b.y, b.w, b.h);
+
+    for (const b of buildings) drawBuilding(b);
+
+    // craters
+    for (const c of craters) {
+      ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+      ctx.fillStyle = "#0c081f"; ctx.fill();
+      ctx.beginPath(); ctx.arc(c.x, c.y, c.r, Math.PI, Math.PI*2);
+      ctx.strokeStyle = "rgba(0,0,0,0.4)"; ctx.lineWidth = 2; ctx.stroke();
+    }
+
+    for (const g of gorillas) if (g) drawGorilla(g);
+
+    // previous trajectory
+    if (lastTrajectory.length > 1) {
+      ctx.save(); ctx.globalAlpha = 0.22; ctx.strokeStyle = "#ffd23f";
+      ctx.setLineDash([2, 5]); ctx.beginPath();
+      ctx.moveTo(lastTrajectory[0].x, lastTrajectory[0].y);
+      for (const p of lastTrajectory) ctx.lineTo(p.x, p.y);
+      ctx.stroke(); ctx.restore();
+    }
+
+    drawAimGuide();
+    if (banana) drawBanana(banana);
+    for (const ex of explosions) drawExplosion(ex);
+    drawParticles();
+    drawWindArrow();
+
+    ctx.restore();
+  }
+
+  function drawSun() {
+    ctx.save();
+    ctx.translate(sun.x, sun.y);
+    const glow = ctx.createRadialGradient(0,0,6,0,0,40);
+    glow.addColorStop(0, "rgba(255,224,102,0.5)");
+    glow.addColorStop(1, "rgba(255,224,102,0)");
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0,0,40,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle = "#ffd23f"; ctx.lineWidth = 2;
+    const t = performance.now()/900;
+    for (let i = 0; i < 12; i++) {
+      const a = (i/12)*Math.PI*2 + t*0.2;
+      const r1 = 17, r2 = 23 + Math.sin(t*2+i)*1.5;
+      ctx.beginPath(); ctx.moveTo(Math.cos(a)*r1, Math.sin(a)*r1);
+      ctx.lineTo(Math.cos(a)*r2, Math.sin(a)*r2); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.arc(0,0,15,0,Math.PI*2);
+    ctx.fillStyle = "#ffe066"; ctx.fill();
+    ctx.fillStyle = "#1a1a00";
+    if (sun.hit) {
+      ctx.beginPath(); ctx.arc(-5,-3,2.6,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(5,-3,2.6,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(0,5,4,0,Math.PI*2); ctx.fill();
+    } else {
+      ctx.beginPath(); ctx.arc(-5,-3,1.9,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(5,-3,1.9,0,Math.PI*2); ctx.fill();
+      ctx.lineWidth = 1.8; ctx.strokeStyle = "#1a1a00";
+      ctx.beginPath(); ctx.arc(0,2,6,0.15*Math.PI,0.85*Math.PI); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawCloud(c) {
+    ctx.save(); ctx.globalAlpha = 0.12; ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, c.s*0.5, 0, Math.PI*2);
+    ctx.arc(c.x + c.s*0.5, c.y + 3, c.s*0.38, 0, Math.PI*2);
+    ctx.arc(c.x - c.s*0.45, c.y + 4, c.s*0.34, 0, Math.PI*2);
+    ctx.fill(); ctx.restore();
+  }
+
+  function drawBuilding(b) {
+    const grd = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
+    grd.addColorStop(0, b.top); grd.addColorStop(1, b.bot);
+    ctx.fillStyle = grd; ctx.fillRect(b.x, b.y, b.w, b.h);
+    // highlight + shade edges
+    ctx.fillStyle = "rgba(255,255,255,0.06)"; ctx.fillRect(b.x, b.y, 3, b.h);
+    ctx.fillStyle = "rgba(0,0,0,0.22)"; ctx.fillRect(b.x + b.w - 4, b.y, 4, b.h);
+    // roof detail
+    if (b.roof === "antenna") {
+      ctx.strokeStyle = "#888"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(b.x + b.w*0.5, b.y); ctx.lineTo(b.x + b.w*0.5, b.y - 14); ctx.stroke();
+      ctx.fillStyle = "#ff5555"; ctx.beginPath(); ctx.arc(b.x + b.w*0.5, b.y - 14, 2, 0, Math.PI*2); ctx.fill();
+    } else if (b.roof === "tank") {
+      ctx.fillStyle = "#555"; ctx.fillRect(b.x + b.w*0.3, b.y - 8, b.w*0.4, 8);
+    }
+    // windows (deterministic)
+    let s = b.seed;
+    const rnd = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+    const cols = Math.floor(b.w / 12), rows = Math.floor(b.h / 16);
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const wx = b.x + 5 + c * 12, wy = b.y + 8 + r * 16;
+      const lit = rnd() > 0.45;
+      ctx.fillStyle = lit ? "#ffe9a0" : "#2a2a40";
+      ctx.fillRect(wx, wy, 6, 9);
+      if (lit) { ctx.fillStyle = "rgba(255,233,160,0.25)"; ctx.fillRect(wx-1, wy-1, 8, 11); }
+    }
+  }
+
+  function drawGorilla(g) {
+    const bob = Math.sin(g.idle) * 0.8;
+    const x = g.x, y = g.y + bob, w = g.w, h = g.h;
+    ctx.save();
+    // shadow
+    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    ctx.beginPath(); ctx.ellipse(x + w/2, y + h - 1, w*0.42, 3, 0, 0, Math.PI*2); ctx.fill();
+
+    const fur = "#5a3a2a", furD = "#43291c", furL = "#6e4a36", skin = "#caa07a";
+    // legs
+    ctx.fillStyle = furD;
+    ctx.fillRect(x + w*0.22, y + h*0.72, w*0.22, h*0.28);
+    ctx.fillRect(x + w*0.56, y + h*0.72, w*0.22, h*0.28);
+    // body
+    ctx.fillStyle = fur;
+    rr(ctx, x + w*0.16, y + h*0.26, w*0.68, h*0.52, 6); ctx.fill();
+    // chest
+    ctx.fillStyle = furL;
+    rr(ctx, x + w*0.32, y + h*0.34, w*0.36, h*0.34, 5); ctx.fill();
+    // arms
+    const armY = y + h*0.30;
+    ctx.fillStyle = fur;
+    if (g.armUp === 0) rr(ctx, x - w*0.04, y - h*0.10, w*0.22, h*0.34, 5);
+    else rr(ctx, x - w*0.02, armY, w*0.20, h*0.40, 5);
+    ctx.fill();
+    if (g.armUp === 1) rr(ctx, x + w*0.82, y - h*0.10, w*0.22, h*0.34, 5);
+    else rr(ctx, x + w*0.82, armY, w*0.20, h*0.40, 5);
+    ctx.fill();
+    // head
+    ctx.fillStyle = fur;
+    rr(ctx, x + w*0.26, y - h*0.02, w*0.48, h*0.34, 7); ctx.fill();
+    // face
+    ctx.fillStyle = skin;
+    rr(ctx, x + w*0.34, y + h*0.06, w*0.32, h*0.22, 5); ctx.fill();
+    // brow
+    ctx.fillStyle = furD; ctx.fillRect(x + w*0.32, y + h*0.05, w*0.36, h*0.04);
+    // eyes
+    ctx.fillStyle = "#111";
+    ctx.fillRect(x + w*0.40, y + h*0.11, 3, 3);
+    ctx.fillRect(x + w*0.56, y + h*0.11, 3, 3);
+    // nostrils
+    ctx.fillRect(x + w*0.44, y + h*0.18, 2, 2);
+    ctx.fillRect(x + w*0.53, y + h*0.18, 2, 2);
+    ctx.restore();
+  }
+
+  function rr(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x+r, y);
+    c.arcTo(x+w, y, x+w, y+h, r);
+    c.arcTo(x+w, y+h, x, y+h, r);
+    c.arcTo(x, y+h, x, y, r);
+    c.arcTo(x, y, x+w, y, r);
+    c.closePath();
+  }
+
+  function drawBanana(b) {
+    ctx.save();
+    for (let i = 0; i < b.trail.length; i++) {
+      const p = b.trail[i];
+      ctx.globalAlpha = (i / b.trail.length) * 0.45;
+      ctx.fillStyle = "#ffd23f";
+      const sz = 1 + (i / b.trail.length) * 2;
+      ctx.fillRect(p.x - sz/2, p.y - sz/2, sz, sz);
+    }
+    ctx.restore();
+    ctx.save();
+    ctx.translate(b.x, b.y); ctx.rotate(b.rot);
+    ctx.fillStyle = "#ffe14d";
+    ctx.beginPath();
+    ctx.arc(0, 0, b.r, 0.2*Math.PI, 1.5*Math.PI);
+    ctx.arc(2, 2, b.r, 1.5*Math.PI, 0.2*Math.PI, true);
+    ctx.fill();
+    ctx.strokeStyle = "#c9a227"; ctx.lineWidth = 1; ctx.stroke();
+    // tips
+    ctx.fillStyle = "#5a3a1a";
+    ctx.fillRect(-1, -b.r-1, 2, 2);
+    ctx.restore();
+  }
+
+  function drawExplosion(ex) {
+    const r = ex.r * (0.4 + ex.t * 0.9);
+    ctx.save(); ctx.globalAlpha = 1 - ex.t;
+    const grd = ctx.createRadialGradient(ex.x, ex.y, 0, ex.x, ex.y, r);
+    grd.addColorStop(0, "#fff"); grd.addColorStop(0.35, "#ffd23f");
+    grd.addColorStop(0.7, "#ff7b1a"); grd.addColorStop(1, "rgba(255,40,0,0)");
+    ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawParticles() {
+    for (const p of particles) {
+      ctx.globalAlpha = clamp(p.life, 0, 1);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x, p.y, p.size, p.size);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawAimGuide() {
+    if (!aim || state !== "aiming") return;
+    const g = gorillas[currentPlayer]; if (!g) return;
+    const ox = g.x + g.w/2, oy = g.y - 6;
+    const dir = currentPlayer === 0 ? 1 : -1;
+    // compute angle/power from drag (pull-back slingshot)
+    const dragX = aim.fromX - aim.curX, dragY = aim.fromY - aim.curY;
+    const ang = Math.atan2(Math.max(0, dragY), Math.abs(dragX));
+    const power = clamp(Math.hypot(dragX, dragY) * 0.9, 0, 200);
+    el.angle.value = Math.round(ang * 180 / Math.PI);
+    el.power.value = Math.round(power);
+    // dotted predicted arc
+    const rad = ang, speed = power * 0.55;
+    let px = ox, py = oy, vx = Math.cos(rad)*speed*dir, vy = -Math.sin(rad)*speed;
+    ctx.save(); ctx.fillStyle = "rgba(255,255,255,0.8)";
+    for (let i = 0; i < 36; i++) {
+      vx += wind * 0.05; vy += GRAVITY * 0.05 * 6;
+      px += vx * 0.05 * 6; py += vy * 0.05 * 6;
+      if (py > H || px < 0 || px > W) break;
+      if (i % 2 === 0) { ctx.beginPath(); ctx.arc(px, py, 1.6, 0, Math.PI*2); ctx.fill(); }
+    }
+    ctx.restore();
+    // power ring on gorilla
+    ctx.save(); ctx.strokeStyle = "#ffd23f"; ctx.globalAlpha = 0.6; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(ox, oy, 8 + power*0.12, 0, Math.PI*2); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawWindArrow() {
+    const cx = W / 2, y = H - 10, mag = wind * 24;
+    ctx.save();
+    ctx.strokeStyle = "#88ccff"; ctx.fillStyle = "#88ccff"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(cx, y); ctx.lineTo(cx + mag, y); ctx.stroke();
+    if (Math.abs(mag) > 3) {
+      const dir = Math.sign(mag);
+      ctx.beginPath(); ctx.moveTo(cx + mag, y);
+      ctx.lineTo(cx + mag - dir*8, y - 4); ctx.lineTo(cx + mag - dir*8, y + 4);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.fillStyle = "#5a7a9a"; ctx.font = "9px Courier New"; ctx.textAlign = "center";
+    ctx.fillText("WIND", cx, y - 8);
+    ctx.restore();
+  }
+
+  // ---------------- Loop ----------------
+  function loop() {
+    const dt = 0.016;
+    if (state !== "setup") { step(dt); draw(); }
+    requestAnimationFrame(loop);
+  }
+
+  // ---------------- Input ----------------
+  function canvasPoint(e) {
+    const rect = canvas.getBoundingClientRect();
+    const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    const cy = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+    return { x: cx / rect.width * W, y: cy / rect.height * H };
+  }
+  function nearCurrentGorilla(pt) {
+    const g = gorillas[currentPlayer]; if (!g) return false;
+    return pt.x > g.x - 40 && pt.x < g.x + g.w + 40 && pt.y > g.y - 40 && pt.y < g.y + g.h + 60;
+  }
+  function pointerDown(e) {
+    if (state !== "aiming" || (vsAI && currentPlayer === 1)) return;
+    const pt = canvasPoint(e);
+    if (nearCurrentGorilla(pt)) {
+      const g = gorillas[currentPlayer];
+      aim = { fromX: g.x + g.w/2, fromY: g.y - 6, curX: pt.x, curY: pt.y };
+      e.preventDefault();
+    }
+  }
+  function pointerMove(e) { if (aim) { aim.curX = canvasPoint(e).x; aim.curY = canvasPoint(e).y; e.preventDefault(); } }
+  function pointerUp(e) {
+    if (!aim) return;
+    const power = clamp(Math.hypot(aim.fromX - aim.curX, aim.fromY - aim.curY) * 0.9, 0, 200);
+    const ang = Math.atan2(Math.max(0, aim.fromY - aim.curY), Math.abs(aim.fromX - aim.curX)) * 180 / Math.PI;
+    aim = null;
+    if (power > 6) fire(ang, power, currentPlayer);
+    e.preventDefault();
+  }
+  canvas.addEventListener("mousedown", pointerDown);
+  canvas.addEventListener("mousemove", pointerMove);
+  window.addEventListener("mouseup", pointerUp);
+  canvas.addEventListener("touchstart", pointerDown, { passive: false });
+  canvas.addEventListener("touchmove", pointerMove, { passive: false });
+  canvas.addEventListener("touchend", pointerUp, { passive: false });
+
+  el.fire.addEventListener("click", fireFromInputs);
+  el.mode2p.addEventListener("click", () => newGame(false));
+  el.modeAI.addEventListener("click", () => newGame(true));
+  el.newgame.addEventListener("click", showMenu);
+
+  function showMenu() {
+    state = "setup";
+    el.setup.classList.remove("hidden");
+    el.setup.innerHTML =
+      `<h2>GORILLAS</h2><p>Two gorillas duel atop a city skyline. <b>Drag back from your gorilla</b> ` +
+      `to aim, or type an <b>angle</b> and <b>power</b>, then launch an explosive banana. ` +
+      `Watch the <b>wind</b>. First to 3 wins!</p>` +
+      `<div class="mode-row"><button id="mode-2p">2 PLAYERS</button>` +
+      `<button id="mode-ai" class="secondary">VS COMPUTER</button></div>`;
+    document.getElementById("mode-2p").onclick = () => newGame(false);
+    document.getElementById("mode-ai").onclick = () => newGame(true);
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (state !== "aiming" || (vsAI && currentPlayer === 1)) return;
+    if (document.activeElement === el.angle || document.activeElement === el.power) {
+      if (e.key === "Enter") fireFromInputs(); return;
+    }
+    const a = parseFloat(el.angle.value) || 0, p = parseFloat(el.power.value) || 0;
+    if (e.key === "Enter") { fireFromInputs(); e.preventDefault(); }
+    else if (e.key === "ArrowUp")   { el.angle.value = clamp(a + 1, 0, 90); e.preventDefault(); }
+    else if (e.key === "ArrowDown") { el.angle.value = clamp(a - 1, 0, 90); e.preventDefault(); }
+    else if (e.key === "ArrowRight"){ el.power.value = clamp(p + 2, 1, 200); e.preventDefault(); }
+    else if (e.key === "ArrowLeft") { el.power.value = clamp(p - 2, 1, 200); e.preventDefault(); }
+  });
+
+  // ---- PWA service worker ----
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(()=>{}));
+  }
+
+  resize();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
