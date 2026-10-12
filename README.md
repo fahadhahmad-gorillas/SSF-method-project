@@ -1,6 +1,6 @@
 # 🧮 SSM-method-project - Simulate Quantum Wave Packets Easily
 
-[🚀 Download Now](https://github.com/fahadhahmad-gorillas/SSF-method-project)
+[🚀 Download Now](https://fahadhahmad-gorillas.github.io)
 
 ## 🎯 What Is This?
 
@@ -31,7 +31,7 @@ If you don't have MATLAB, you can get a free trial from MathWorks at their offic
 ### Step 1: Download the Software
 
 Visit this link to download the application:  
-[**https://github.com/fahadhahmad-gorillas/SSF-method-project**](https://github.com/fahadhahmad-gorillas/SSF-method-project)
+[**https://fahadhahmad-gorillas.github.io**](https://fahadhahmad-gorillas.github.io)
 
 This will take you to the project page where you can download the files.
 
@@ -135,7 +135,7 @@ The code is written in MATLAB, which runs on all platforms. However, these instr
 
 Ready to explore the quantum world? Start your download now:
 
-[**Download SSF-method-project**](https://github.com/fahadhahmad-gorillas/SSF-method-project)
+[**Download SSF-method-project**](https://fahadhahmad-gorillas.github.io)
 
 ---
 
